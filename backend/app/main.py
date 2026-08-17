@@ -1,5 +1,14 @@
 from fastapi import FastAPI
 
+from .database import Base, engine
+from .models.models import Repository
+from .models.code_chunk import CodeChunk
+from .routes.repositories import router as repositories_router
+
+
+Base.metadata.create_all(bind=engine)
+
+
 app = FastAPI(
     title="AI Codebase Assistant",
     description="AI-powered assistant for understanding and analyzing codebases.",
@@ -21,3 +30,6 @@ def health_check():
         "status": "healthy",
         "service": "ai-codebase-assistant",
     }
+
+
+app.include_router(repositories_router)
