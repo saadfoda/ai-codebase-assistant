@@ -24,7 +24,9 @@ out/
 dist/
 build/
 
+# Cloned repositories
+cloned_repositories/
+
 # OS
 .DS_Store
 Thumbs.db
-
