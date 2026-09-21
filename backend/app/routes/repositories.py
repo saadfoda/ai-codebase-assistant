@@ -6,6 +6,7 @@ from app.models.models import Repository
 from app.schemas.repository import RepositoryCreate, RepositoryResponse
 from app.services.search_service import search_code
 from app.services.answer_service import generate_answer
+from app.services.ingestion_service import ingest_repository
 
 
 router = APIRouter(
@@ -124,3 +125,33 @@ def ask_repository(
             for chunk, distance in results
         ],
     }
+
+@router.post("/{repository_id}/ingest")
+def ingest_repository_endpoint(
+    repository_id: int,
+    db: Session = Depends(get_db),
+):
+    repository = (
+        db.query(Repository)
+        .filter(Repository.id == repository_id)
+        .first()
+    )
+
+    if not repository:
+        raise HTTPException(
+            status_code=404,
+            detail="Repository not found",
+        )
+
+    try:
+        return ingest_repository(
+            db=db,
+            repository_id=repository.id,
+            repository_url=repository.url,
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
