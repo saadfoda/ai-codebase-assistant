@@ -116,14 +116,15 @@ def ask_repository(
         "query": q,
         "answer": answer,
         "sources": [
-            {
-                "file_path": chunk.file_path,
-                "start_line": chunk.start_line,
-                "end_line": chunk.end_line,
-                "distance": float(distance),
-            }
-            for chunk, distance in results
-        ],
+    {
+        "file_path": chunk.file_path,
+        "start_line": chunk.start_line,
+        "end_line": chunk.end_line,
+        "content": chunk.content,
+        "distance": float(distance),
+    }
+    for chunk, distance in results
+],
     }
 
 @router.post("/{repository_id}/ingest")

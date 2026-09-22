@@ -1,7 +1,9 @@
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.models.code_chunk import CodeChunk
 from app.services.repository_service import clone_repository
 from app.services.code_parser import read_repository_files
 from app.services.code_chunker import chunk_code
@@ -17,17 +19,19 @@ def ingest_repository(
     """
     Clone a GitHub repository, parse its source files, chunk the code,
     save the chunks, and generate embeddings.
+
+    Each ingestion uses a unique local clone directory so that
+    Windows file locks on previous Git clones do not prevent re-indexing.
     """
 
-    # Project root:
-    # ai-codebase-assistant/
     project_root = Path(__file__).resolve().parents[3]
 
     cloned_repositories_dir = project_root / "cloned_repositories"
     cloned_repositories_dir.mkdir(parents=True, exist_ok=True)
 
     repository_path = (
-        cloned_repositories_dir / f"repository_{repository_id}"
+        cloned_repositories_dir
+        / f"repository_{repository_id}_{uuid4().hex[:8]}"
     )
 
     # Clone repository
@@ -60,7 +64,15 @@ def ingest_repository(
             "No code chunks were created from the repository."
         )
 
-    # Save chunks to PostgreSQL
+    # Remove old indexed chunks only after the new repository
+    # has been successfully cloned and processed.
+    db.query(CodeChunk).filter(
+        CodeChunk.repository_id == repository_id
+    ).delete(synchronize_session=False)
+
+    db.commit()
+
+    # Save new chunks
     saved_chunks = save_chunks(
         db=db,
         repository_id=repository_id,
