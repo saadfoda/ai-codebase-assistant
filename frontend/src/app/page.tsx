@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -13,10 +13,37 @@ type Source = {
   distance: number;
 };
 
+type Repository = {
+  id: number;
+  url: string;
+  name: string;
+  description: string;
+};
+
 export default function Home() {
+  useEffect(() => {
+    async function loadRepositories() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/repositories/`);
+
+        if (!response.ok) {
+          throw new Error("Failed to load repositories.");
+        }
+
+        const data = await response.json();
+        setRepositories(data);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadRepositories();
+  }, []);
   const [repoUrl, setRepoUrl] = useState("");
   const [repoName, setRepoName] = useState("");
   const [repoId, setRepoId] = useState<number | null>(null);
+
+  const [repositories, setRepositories] = useState<Repository[]>([]);
 
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
@@ -70,6 +97,12 @@ export default function Home() {
       const repository = await createResponse.json();
 
       setRepoId(repository.id);
+
+      setRepositories((current) => [
+        repository,
+        ...current.filter((item) => item.id !== repository.id),
+      ]);
+
       setIndexingPhase("indexing");
 
       const ingestResponse = await fetch(
@@ -283,6 +316,40 @@ export default function Home() {
             )}
           </div>
         </section>
+
+        {repositories.length > 0 && (
+          <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+            <h2 className="text-xl font-semibold">Your Repositories</h2>
+
+            <div className="mt-4 space-y-3">
+              {repositories.map((repository) => (
+                <button
+                  key={repository.id}
+                  onClick={() => {
+                    setRepoId(repository.id);
+                    setRepoUrl(repository.url);
+                    setRepoName(repository.name);
+                    setAnswer("");
+                    setSources([]);
+                    setError("");
+                  }}
+                  className={`w-full rounded-xl border p-4 text-left transition ${repoId === repository.id
+                      ? "border-blue-500 bg-blue-950/30"
+                      : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                    }`}
+                >
+                  <div className="font-medium text-white">
+                    {repository.name}
+                  </div>
+
+                  <div className="mt-1 truncate text-sm text-slate-400">
+                    {repository.url}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
           <h2 className="text-xl font-semibold">Ask About Your Code</h2>

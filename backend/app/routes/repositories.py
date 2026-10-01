@@ -7,6 +7,24 @@ from app.schemas.repository import RepositoryCreate, RepositoryResponse
 from app.services.search_service import search_code
 from app.services.answer_service import generate_answer
 from app.services.ingestion_service import ingest_repository
+from urllib.parse import urlparse
+
+def normalize_repository_url(url: str) -> str:
+    """
+    Normalize GitHub repository URLs so equivalent URLs
+    are treated as the same repository.
+    """
+
+    parsed = urlparse(url.strip())
+
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    path = parsed.path.rstrip("/")
+
+    if path.endswith(".git"):
+        path = path[:-4]
+
+    return f"{scheme}://{hostname}{path}"
 
 
 router = APIRouter(
@@ -20,17 +38,24 @@ def create_repository(
     repository: RepositoryCreate,
     db: Session = Depends(get_db),
 ):
-    existing_repository = (
-        db.query(Repository)
-        .filter(Repository.url == str(repository.url))
-        .first()
+    normalized_url = normalize_repository_url(str(repository.url))
+
+    repositories = db.query(Repository).all()
+
+    existing_repository = next(
+        (
+            repo
+            for repo in repositories
+            if normalize_repository_url(repo.url) == normalized_url
+        ),
+        None,
     )
 
     if existing_repository:
         return existing_repository
 
     db_repository = Repository(
-        url=str(repository.url),
+        url=normalized_url,
         name=repository.name,
         description=repository.description,
     )
@@ -126,6 +151,16 @@ def ask_repository(
     for chunk, distance in results
 ],
     }
+
+@router.get("/", response_model=list[RepositoryResponse])
+def list_repositories(
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Repository)
+        .order_by(Repository.id.desc())
+        .all()
+    )
 
 @router.post("/{repository_id}/ingest")
 def ingest_repository_endpoint(

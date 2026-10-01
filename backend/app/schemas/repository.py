@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, ConfigDict, HttpUrl
 
 
 class RepositoryCreate(BaseModel):
@@ -13,5 +13,4 @@ class RepositoryResponse(BaseModel):
     name: str
     description: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
