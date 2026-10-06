@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 type Source = {
   file_path: string;
@@ -17,28 +18,10 @@ type Repository = {
   id: number;
   url: string;
   name: string;
-  description: string;
+  description: string | null;
 };
 
 export default function Home() {
-  useEffect(() => {
-    async function loadRepositories() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/repositories/`);
-
-        if (!response.ok) {
-          throw new Error("Failed to load repositories.");
-        }
-
-        const data = await response.json();
-        setRepositories(data);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    loadRepositories();
-  }, []);
   const [repoUrl, setRepoUrl] = useState("");
   const [repoName, setRepoName] = useState("");
   const [repoId, setRepoId] = useState<number | null>(null);
@@ -62,6 +45,25 @@ export default function Home() {
     chunks_created: number;
     chunks_embedded: number;
   } | null>(null);
+
+  useEffect(() => {
+    async function loadRepositories() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/repositories/`);
+
+        if (!response.ok) {
+          throw new Error("Failed to load repositories.");
+        }
+
+        const data = await response.json();
+        setRepositories(data);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    loadRepositories();
+  }, []);
 
   async function indexRepository() {
     setError("");
