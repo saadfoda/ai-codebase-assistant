@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,8 @@ from app.services.search_service import search_code
 from app.services.answer_service import generate_answer
 from app.services.ingestion_service import ingest_repository
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 def normalize_repository_url(url: str) -> str:
     """
@@ -186,8 +190,13 @@ def ingest_repository_endpoint(
             repository_url=repository.url,
         )
 
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "Repository ingestion failed for repository_id=%s",
+            repository_id,
+        )
+
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Repository ingestion failed.",
         )
