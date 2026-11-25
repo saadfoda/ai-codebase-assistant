@@ -1,4 +1,7 @@
-AI Codebase Assistant
+# AI Codebase Assistant
+
+[![Backend CI](https://github.com/saadfoda/ai-codebase-assistant/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/saadfoda/ai-codebase-assistant/actions/workflows/backend-ci.yml)
+
 
 A RAG-powered application for asking natural-language questions
 about GitHub codebases.
