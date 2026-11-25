@@ -56,3 +56,4 @@ def health_check():
 
 
 app.include_router(repositories_router)
+# CI/CD deployment verification
