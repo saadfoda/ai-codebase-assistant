@@ -158,7 +158,7 @@ def test_ingest_repository(test_client, monkeypatch):
     def fake_ingest_repository(db, repository_id, repository_url):
         return {
             "repository_id": repository_id,
-            "repository_path": "test/repository",
+            "duration_seconds": 0.25,
             "files_processed": 5,
             "chunks_created": 10,
             "chunks_embedded": 10,

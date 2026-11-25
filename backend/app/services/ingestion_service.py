@@ -1,5 +1,8 @@
+
+import logging
 from pathlib import Path
-from uuid import uuid4
+from tempfile import TemporaryDirectory
+from time import perf_counter
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +13,8 @@ from app.services.code_chunker import chunk_code
 from app.services.chunk_service import save_chunks
 from app.services.embedding_indexer import embed_pending_chunks
 
+logger = logging.getLogger(__name__)
+
 
 def ingest_repository(
     db: Session,
@@ -17,78 +22,114 @@ def ingest_repository(
     repository_url: str,
 ) -> dict:
     """
-    Clone a GitHub repository, parse its source files, chunk the code,
-    save the chunks, and generate embeddings.
-
-    Each ingestion uses a unique local clone directory so that
-    Windows file locks on previous Git clones do not prevent re-indexing.
+    Clone, parse, chunk, and index a GitHub repository.
+    Temporary repository files are automatically cleaned up.
     """
 
-    project_root = Path(__file__).resolve().parents[3]
+    start_time = perf_counter()
 
-    cloned_repositories_dir = project_root / "cloned_repositories"
-    cloned_repositories_dir.mkdir(parents=True, exist_ok=True)
-
-    repository_path = (
-        cloned_repositories_dir
-        / f"repository_{repository_id}_{uuid4().hex[:8]}"
+    logger.info(
+        "Starting ingestion repository_id=%s",
+        repository_id,
     )
 
-    # Clone repository
-    clone_repository(
-        repository_url=repository_url,
-        destination=str(repository_path),
-    )
+    try:
+        with TemporaryDirectory(
+            prefix=f"repository_{repository_id}_"
+        ) as temp_dir:
 
-    # Read supported source files
-    files = read_repository_files(str(repository_path))
+            repository_path = Path(temp_dir) / "source"
 
-    if not files:
-        raise ValueError(
-            "No supported source files were found in the repository."
+            clone_repository(
+                repository_url=repository_url,
+                destination=str(repository_path),
+            )
+
+            files = read_repository_files(
+                str(repository_path)
+            )
+
+            if not files:
+                raise ValueError(
+                    "No supported source files were found "
+                    "in the repository."
+                )
+
+            logger.info(
+                "Parsed %s source files repository_id=%s",
+                len(files),
+                repository_id,
+            )
+
+            all_chunks = []
+
+            for file in files:
+                file_chunks = chunk_code(
+                    content=file["content"],
+                    file_path=file["path"],
+                )
+
+                all_chunks.extend(file_chunks)
+
+            if not all_chunks:
+                raise ValueError(
+                    "No code chunks were created "
+                    "from the repository."
+                )
+
+            logger.info(
+                "Created %s chunks repository_id=%s",
+                len(all_chunks),
+                repository_id,
+            )
+
+        logger.info(
+            "Temporary repository cleaned up repository_id=%s",
+            repository_id,
         )
 
-    # Chunk all source files
-    all_chunks = []
+        db.query(CodeChunk).filter(
+            CodeChunk.repository_id == repository_id
+        ).delete(synchronize_session=False)
 
-    for file in files:
-        file_chunks = chunk_code(
-            content=file["content"],
-            file_path=file["path"],
+        db.commit()
+
+        saved_chunks = save_chunks(
+            db=db,
+            repository_id=repository_id,
+            chunks=all_chunks,
         )
 
-        all_chunks.extend(file_chunks)
-
-    if not all_chunks:
-        raise ValueError(
-            "No code chunks were created from the repository."
+        embedded_count = embed_pending_chunks(
+            db=db,
+            repository_id=repository_id,
         )
 
-    # Remove old indexed chunks only after the new repository
-    # has been successfully cloned and processed.
-    db.query(CodeChunk).filter(
-        CodeChunk.repository_id == repository_id
-    ).delete(synchronize_session=False)
+        duration = round(perf_counter() - start_time, 2)
 
-    db.commit()
+        logger.info(
+            "Ingestion completed repository_id=%s "
+            "chunks=%s embeddings=%s duration=%.2fs",
+            repository_id,
+            len(saved_chunks),
+            embedded_count,
+            duration,
+        )
 
-    # Save new chunks
-    saved_chunks = save_chunks(
-        db=db,
-        repository_id=repository_id,
-        chunks=all_chunks,
-    )
+        return {
+            "repository_id": repository_id,
+            "files_processed": len(files),
+            "chunks_created": len(saved_chunks),
+            "chunks_embedded": embedded_count,
+            "duration_seconds": duration,
+        }
 
-    # Generate and store embeddings
-    embedded_count = embed_pending_chunks(
-        db=db,
-        repository_id=repository_id,
-    )
+    except Exception:
+        db.rollback()
 
-    return {
-        "repository_id": repository_id,
-        "repository_path": str(repository_path),
-        "files_processed": len(files),
-        "chunks_created": len(saved_chunks),
-        "chunks_embedded": embedded_count,
-    }
+        logger.exception(
+            "Ingestion failed repository_id=%s",
+            repository_id,
+        )
+
+        raise
