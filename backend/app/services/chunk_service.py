@@ -1,3 +1,4 @@
+
 from sqlalchemy.orm import Session
 
 from app.models.code_chunk import CodeChunk
@@ -8,6 +9,12 @@ def save_chunks(
     repository_id: int,
     chunks: list[dict],
 ) -> list[CodeChunk]:
+    """
+    Save fully embedded code chunks.
+
+    Transaction management is handled by the caller.
+    """
+
     saved_chunks = []
 
     for chunk in chunks:
@@ -18,14 +25,12 @@ def save_chunks(
             start_line=chunk["start_line"],
             end_line=chunk["end_line"],
             content=chunk["content"],
+            embedding=chunk["embedding"],
         )
 
         db.add(db_chunk)
         saved_chunks.append(db_chunk)
 
-    db.commit()
-
-    for chunk in saved_chunks:
-        db.refresh(chunk)
+    db.flush()
 
     return saved_chunks

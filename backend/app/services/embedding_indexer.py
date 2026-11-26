@@ -1,43 +1,51 @@
-from sqlalchemy.orm import Session
 
-from app.models.code_chunk import CodeChunk
+import logging
+
 from app.services.embedding_service import embed_code
 
 
-def embed_pending_chunks(db: Session, repository_id: int) -> int:
+logger = logging.getLogger(__name__)
+
+
+def generate_chunk_embeddings(
+    chunks: list[dict],
+) -> list[dict]:
     """
-    Generate and store embeddings for all code chunks
-    belonging to a repository that do not have an embedding yet.
+    Generate embeddings for all code chunks before
+    modifying the database.
     """
 
-    chunks = (
-        db.query(CodeChunk)
-        .filter(
-            CodeChunk.repository_id == repository_id,
-            CodeChunk.embedding.is_(None),
-        )
-        .all()
+    embedded_chunks = []
+    total_chunks = len(chunks)
+
+    logger.info(
+        "Generating embeddings for %s chunks",
+        total_chunks,
     )
 
-    print(f"Found {len(chunks)} chunks without embeddings.")
-
-    embedded_count = 0
-
-    for chunk in chunks:
-        print(
-            f"Embedding {embedded_count + 1}/{len(chunks)}: "
-            f"{chunk.file_path} "
-            f"(lines {chunk.start_line}-{chunk.end_line})"
+    for index, chunk in enumerate(chunks, start=1):
+        logger.info(
+            "Embedding %s/%s: %s (lines %s-%s)",
+            index,
+            total_chunks,
+            chunk["file_path"],
+            chunk["start_line"],
+            chunk["end_line"],
         )
 
         embedding = embed_code(
-            code=chunk.content,
-            file_path=chunk.file_path,
+            code=chunk["content"],
+            file_path=chunk["file_path"],
         )
 
-        chunk.embedding = embedding
+        embedded_chunks.append({
+            **chunk,
+            "embedding": embedding,
+        })
 
-        db.commit()
-        embedded_count += 1
+    logger.info(
+        "Successfully generated %s embeddings",
+        len(embedded_chunks),
+    )
 
-    return embedded_count
+    return embedded_chunks

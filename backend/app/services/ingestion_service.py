@@ -11,7 +11,8 @@ from app.services.repository_service import clone_repository
 from app.services.code_parser import read_repository_files
 from app.services.code_chunker import chunk_code
 from app.services.chunk_service import save_chunks
-from app.services.embedding_indexer import embed_pending_chunks
+from app.services.embedding_indexer import generate_chunk_embeddings
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,9 @@ def ingest_repository(
 ) -> dict:
     """
     Clone, parse, chunk, and index a GitHub repository.
-    Temporary repository files are automatically cleaned up.
+
+    Generate all embeddings before replacing the existing
+    index in a single database transaction.
     """
 
     start_time = perf_counter()
@@ -88,22 +91,39 @@ def ingest_repository(
             repository_id,
         )
 
+        # Generate embeddings before modifying existing records.
+        embedded_chunks = generate_chunk_embeddings(
+            all_chunks
+        )
+
+        if len(embedded_chunks) != len(all_chunks):
+            raise RuntimeError(
+                "Embedding generation returned an "
+                "unexpected number of chunks."
+            )
+
+        logger.info(
+            "Generated %s embeddings repository_id=%s",
+            len(embedded_chunks),
+            repository_id,
+        )
+
+        # Replace the existing index in one transaction.
         db.query(CodeChunk).filter(
             CodeChunk.repository_id == repository_id
         ).delete(synchronize_session=False)
 
-        db.commit()
-
         saved_chunks = save_chunks(
             db=db,
             repository_id=repository_id,
-            chunks=all_chunks,
+            chunks=embedded_chunks,
         )
 
-        embedded_count = embed_pending_chunks(
-            db=db,
-            repository_id=repository_id,
-        )
+        chunks_created = len(saved_chunks)
+        embedded_count = len(embedded_chunks)
+
+        # Commit only after all database operations succeed.
+        db.commit()
 
         duration = round(perf_counter() - start_time, 2)
 
@@ -111,7 +131,7 @@ def ingest_repository(
             "Ingestion completed repository_id=%s "
             "chunks=%s embeddings=%s duration=%.2fs",
             repository_id,
-            len(saved_chunks),
+            chunks_created,
             embedded_count,
             duration,
         )
@@ -119,7 +139,7 @@ def ingest_repository(
         return {
             "repository_id": repository_id,
             "files_processed": len(files),
-            "chunks_created": len(saved_chunks),
+            "chunks_created": chunks_created,
             "chunks_embedded": embedded_count,
             "duration_seconds": duration,
         }
